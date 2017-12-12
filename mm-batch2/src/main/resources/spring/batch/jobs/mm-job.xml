@@ -1,0 +1,97 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:batch="http://www.springframework.org/schema/batch" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/batch
+		http://www.springframework.org/schema/batch/spring-batch-2.2.xsd
+		http://www.springframework.org/schema/beans 
+		http://www.springframework.org/schema/beans/spring-beans-3.2.xsd
+	">
+
+	<import resource="../config/context.xml" />
+	<import resource="../config/database.xml" />
+	<import resource="../config/mail.xml" />
+
+	<batch:job id="updateWMSJOB" restartable="true">
+		<batch:step id="step1" next="step2">
+			<batch:tasklet>
+				<batch:chunk reader="sqlEanReader" writer="xmlItemWriter"
+					processor="eanProcessor" commit-interval="10">
+				</batch:chunk>
+				<batch:listeners>
+						<batch:listener ref="xmlEanReaderListener"  />
+					</batch:listeners>
+			</batch:tasklet>
+		</batch:step>
+		<batch:step id="step2">
+			<batch:tasklet>
+				<batch:chunk reader="xmlEanReader" writer="updateItemWriter"
+					processor="doNothigProcessor" commit-interval="10">
+				</batch:chunk>
+				<batch:listeners>
+						<batch:listener ref="updateListener"  />
+					</batch:listeners>
+			</batch:tasklet>
+		</batch:step>
+	</batch:job>
+
+	<bean id="eanProcessor" class="com.mediamarket.processors.EanProcessor" />
+
+	<bean id="doNothigProcessor" class="com.mediamarket.processors.DoNothingProcessor" />
+	
+	
+	<bean id="xmlItemWriter" class="org.springframework.batch.item.xml.StaxEventItemWriter">
+	 <property name="shouldDeleteIfEmpty" value="true"></property>
+		<property name="resource" value="file:xml/outputs/reportWz.xml" />
+		<property name="marshaller" ref="reportMarshaller" />
+		<property name="rootTagName" value="report" />
+	</bean>
+
+
+	<bean id="xmlEanReader" class="org.springframework.batch.item.xml.StaxEventItemReader">
+		<property name="resource" value="file:xml/outputs/report.xml" />
+		<property name="unmarshaller" ref="reportMarshaller" />
+		<property name="fragmentRootElementName" value="ean_record" />
+	</bean>
+
+	<bean id="updateItemWriter"
+		class="	org.springframework.batch.item.database.JdbcBatchItemWriter">
+		<property name="dataSource" ref="dataSourceWMS" />
+		<property name="sql">
+			<value>
+		<![CDATA[${sql.script.query.updateean.sviluppo}]]>
+			</value>
+		</property>
+		<property name="itemSqlParameterSourceProvider">
+			<bean
+				class="org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider" />
+		</property>
+	</bean>
+
+	<bean id="reportMarshaller" class="org.springframework.oxm.jaxb.Jaxb2Marshaller">
+		<property name="classesToBeBound">
+			<list>
+				<value>com.mediamarket.model.EnrichedEan</value>
+			</list>
+		</property>
+	</bean>
+
+
+
+	<bean id="sqlEanReader"
+		class="org.springframework.batch.item.database.JdbcCursorItemReader">
+		<property name="dataSource" ref="dataSourceWMS" />
+		<property name="sql" value="${sql.script.query.getean.sviluppo}" />
+		<property name="rowMapper">
+			<bean class="com.mediamarket.model.EanMapper">
+				<property name="codiceEan" value="${sql.script.mapper.getean.codiceEan}" />
+				<property name="eanSkidArticolo"
+					value="${sql.script.mapper.getean.eanSkidArticolo}" />
+			</bean>
+		</property>
+	</bean>
+	<bean id="updateListener" class="com.mediamarket.listeners.Step2Listener">
+	<property name="mail"  ref="mail"/>
+	</bean>
+	<bean id="xmlEanReaderListener" class="com.mediamarket.listeners.Step1Listener">
+	<property name="mail" ref="mail"/>
+	</bean>
+</beans>
